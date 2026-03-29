@@ -143,10 +143,18 @@ public class SerialService extends Service implements SerialListener {
 
     private void initNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            
+            // Background service channel (Low Importance)
             NotificationChannel nc = new NotificationChannel(Constants.NOTIFICATION_CHANNEL, "Background service", NotificationManager.IMPORTANCE_LOW);
             nc.setShowBadge(false);
-            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             nm.createNotificationChannel(nc);
+
+            // Alerts channel (High Importance)
+            NotificationChannel ac = new NotificationChannel(Constants.ALERTS_CHANNEL, "Alert Signals", NotificationManager.IMPORTANCE_HIGH);
+            ac.enableVibration(true);
+            ac.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(ac);
         }
     }
 
@@ -239,6 +247,7 @@ public class SerialService extends Service implements SerialListener {
      */
     public void onSerialRead(byte[] data) {
         if(connected) {
+            checkForAlerts(data);
             synchronized (this) {
                 if (listener != null) {
                     boolean first;
@@ -287,6 +296,37 @@ public class SerialService extends Service implements SerialListener {
                 }
             }
         }
+    }
+
+    private void checkForAlerts(byte[] data) {
+        String message = new String(data);
+        String upperMessage = message.toUpperCase();
+        if (upperMessage.contains("ALERT") || upperMessage.contains("CRITICAL") || 
+            upperMessage.contains("DANGER") || upperMessage.contains("EMERGENCY")) {
+            showAlertNotification(message.trim());
+        }
+    }
+
+    private void showAlertNotification(String alertMessage) {
+        Intent restartIntent = new Intent()
+                .setClassName(this, Constants.INTENT_CLASS_MAIN_ACTIVITY)
+                .setAction(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER);
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0;
+        PendingIntent restartPendingIntent = PendingIntent.getActivity(this, 1, restartIntent, flags);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, Constants.ALERTS_CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(getResources().getColor(R.color.colorPrimary))
+                .setContentTitle("Alert Signal Detected")
+                .setContentText(alertMessage)
+                .setContentIntent(restartPendingIntent)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setDefaults(Notification.DEFAULT_ALL);
+
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        nm.notify(Constants.NOTIFY_MANAGER_ALERT_ID, builder.build());
     }
 
 }

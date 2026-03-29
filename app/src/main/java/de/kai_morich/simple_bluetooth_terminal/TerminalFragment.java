@@ -9,9 +9,12 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
+
+import java.io.OutputStream;
 import android.text.Editable;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
@@ -164,6 +167,16 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         if (id == R.id.clear) {
             receiveText.setText("");
             return true;
+        } else if (id == R.id.graph) {
+            Bundle args = new Bundle();
+            args.putString("device", deviceAddress);
+            Fragment fragment = new GraphFragment();
+            fragment.setArguments(args);
+            getParentFragmentManager().beginTransaction().replace(R.id.fragment, fragment, "graph").addToBackStack(null).commit();
+            return true;
+        } else if (id == R.id.export) {
+            exportSession();
+            return true;
         } else if (id == R.id.newline) {
             String[] newlineNames = getResources().getStringArray(R.array.newline_names);
             String[] newlineValues = getResources().getStringArray(R.array.newline_values);
@@ -277,6 +290,32 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         SpannableStringBuilder spn = new SpannableStringBuilder(str + '\n');
         spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorStatusText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         receiveText.append(spn);
+    }
+
+    private void exportSession() {
+        String text = receiveText.getText().toString();
+        if (text.isEmpty()) {
+            Toast.makeText(getActivity(), "No data to export", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, "gutangle_terminal_" + System.currentTimeMillis() + ".txt");
+        startActivityForResult(intent, 2);
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        if (requestCode == 2 && resultCode == Activity.RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            try (OutputStream os = getActivity().getContentResolver().openOutputStream(uri)) {
+                os.write(receiveText.getText().toString().getBytes());
+                Toast.makeText(getActivity(), "Exported successfully", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(getActivity(), "Export failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     /*
